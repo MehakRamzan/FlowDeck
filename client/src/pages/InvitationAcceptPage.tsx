@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { apiRequest } from "../lib/api";
+import { API_URL, apiRequest } from "../lib/api";
 import { useAuth } from "../context/useAuth";
 
 type InvitationPreview = {
@@ -22,7 +22,7 @@ async function fetchInvitationPreview(
 ): Promise<InvitationPreview> {
   try {
     const res = await fetch(
-      `http://localhost:5000/api/invitations/preview/${token}`,
+      `${API_URL}/invitations/preview/${encodeURIComponent(token)}`,
       {
         method: "GET",
         headers: { "Content-Type": "application/json" },
