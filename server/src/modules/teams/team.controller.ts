@@ -3,13 +3,34 @@ import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import {
   addTeamMemberSchema,
   createTeamSchema,
+  updateTeamSchema,
 } from "./team.schema.js";
 import {
   addTeamMember,
   createTeam,
   getTeamById,
   getTeamsByOrganization,
+  deleteTeam,
+  removeTeamMember,
+  updateTeam,
 } from "./team.service.js";
+
+export async function updateTeamController(request: Request, response: Response) {
+  const parsed = updateTeamSchema.safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ success: false, message: "Invalid team name" }); return; }
+  try { const team = await updateTeam((request as AuthenticatedRequest).user.userId, String(request.params.teamId), parsed.data.name); response.json({ success: true, data: { team } }); }
+  catch (error) { const message = error instanceof Error ? error.message : "Unable to update team"; response.status(message.includes("permission") ? 403 : message.includes("not found") ? 404 : 500).json({ success: false, message }); }
+}
+
+export async function deleteTeamController(request: Request, response: Response) {
+  try { await deleteTeam((request as AuthenticatedRequest).user.userId, String(request.params.teamId)); response.json({ success: true, message: "Team deleted" }); }
+  catch (error) { const message = error instanceof Error ? error.message : "Unable to delete team"; response.status(message.includes("permission") ? 403 : message.includes("not found") ? 404 : 500).json({ success: false, message }); }
+}
+
+export async function removeTeamMemberController(request: Request, response: Response) {
+  try { await removeTeamMember((request as AuthenticatedRequest).user.userId, String(request.params.teamId), String(request.params.userId)); response.json({ success: true, message: "Team member removed" }); }
+  catch (error) { const message = error instanceof Error ? error.message : "Unable to remove team member"; response.status(message.includes("permission") ? 403 : message.includes("not found") ? 404 : 500).json({ success: false, message }); }
+}
 
 export async function createTeamController(
   request: Request,

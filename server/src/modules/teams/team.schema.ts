@@ -23,3 +23,7 @@ export type AddTeamMemberInput = z.infer<
 >;
 
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
+
+export const updateTeamSchema = z.object({
+  name: createTeamSchema.shape.name,
+});

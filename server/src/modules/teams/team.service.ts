@@ -216,3 +216,27 @@ export async function addTeamMember(
 
   return teamMember;
 }
+
+async function requireTeamAdmin(userId: string, teamId: string) {
+  const team = await prisma.team.findUnique({ where: { id: teamId } });
+  if (!team) throw new Error("Team not found");
+  const membership = await prisma.organizationMember.findUnique({ where: { organizationId_userId: { organizationId: team.organizationId, userId } } });
+  if (!membership || membership.role === "MEMBER") throw new Error("You do not have permission to manage this team");
+  return team;
+}
+
+export async function updateTeam(userId: string, teamId: string, name: string) {
+  await requireTeamAdmin(userId, teamId);
+  return prisma.team.update({ where: { id: teamId }, data: { name } });
+}
+
+export async function deleteTeam(userId: string, teamId: string) {
+  await requireTeamAdmin(userId, teamId);
+  await prisma.team.delete({ where: { id: teamId } });
+}
+
+export async function removeTeamMember(userId: string, teamId: string, targetUserId: string) {
+  await requireTeamAdmin(userId, teamId);
+  const result = await prisma.teamMember.deleteMany({ where: { teamId, userId: targetUserId } });
+  if (!result.count) throw new Error("Team member not found");
+}

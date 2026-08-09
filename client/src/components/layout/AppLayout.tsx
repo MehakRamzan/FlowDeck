@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
@@ -7,17 +8,25 @@ type AppLayoutProps = {
 };
 
 function AppLayout({ children }: AppLayoutProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] =
+    useState(false);
 
   return (
-    <main className="flex min-h-screen bg-(--color-background)">
+    <main className="app-shell">
       <Sidebar
         isMobileOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
+        onClose={() =>
+          setIsSidebarOpen(false)
+        }
       />
 
-      <section className="min-w-0 flex-1">
-        <Topbar onMenuClick={() => setIsSidebarOpen(true)} />
+      <section className="app-main">
+        <Topbar
+          onMenuClick={() =>
+            setIsSidebarOpen(true)
+          }
+        />
+
         {children}
       </section>
     </main>

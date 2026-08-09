@@ -1,96 +1,217 @@
-import { NavLink } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router";
+import { useAuth } from "../../context/useAuth";
 
-const navigationItems = [
-  { label: "Dashboard", path: "/dashboard" },
-  { label: "My Tasks", path: "/my-tasks" },
-  { label: "Teams", path: "/teams" },
-  { label: "Projects", path: "/projects" },
-  { label: "Members", path: "/members" },
-  { label: "Settings", path: "/settings" },
-  
-];
+const items = [
+  ["Dashboard", "/dashboard", "D"],
+  ["My Tasks", "/my-tasks", "T"],
+  ["Teams", "/teams", "G"],
+  ["Projects", "/projects", "P"],
+  ["Members", "/members", "M"],
+  ["Settings", "/settings", "S"],
+] as const;
 
-type SidebarProps = {
-  isMobileOpen: boolean;
-  onClose: () => void;
-};
+function roleLabel(role?: string) {
+  if (!role) return "Member";
+  return role.charAt(0) + role.slice(1).toLowerCase();
+}
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+function Content({ close }: { close?: () => void }) {
+  const {
+    organizations,
+    currentOrganization,
+    selectOrganization,
+    logout,
+  } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
+  const [workspaceSearch, setWorkspaceSearch] = useState("");
+
+  useEffect(() => {
+    if (!isWorkspaceMenuOpen) return;
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsWorkspaceMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [isWorkspaceMenuOpen]);
+
+  const filteredWorkspaces = organizations.filter((workspace) =>
+    workspace.organization.name
+      .toLowerCase()
+      .includes(workspaceSearch.trim().toLowerCase())
+  );
+
+  function go(path: string) {
+    setIsWorkspaceMenuOpen(false);
+    close?.();
+    navigate(path);
+  }
+
+  function switchWorkspace(organizationId: string) {
+    if (organizationId === currentOrganization?.organization.id) {
+      setIsWorkspaceMenuOpen(false);
+      return;
+    }
+    selectOrganization(organizationId);
+    setIsWorkspaceMenuOpen(false);
+    close?.();
+    const isWorkspaceSpecificRecord = /^\/projects\/[^/]+\/board/.test(
+      location.pathname
+    );
+    navigate(isWorkspaceSpecificRecord ? "/dashboard" : location.pathname);
+  }
+
+  function signOut() {
+    logout();
+    close?.();
+    navigate("/login");
+  }
+
   return (
     <>
-      <div className="font-(--font-heading) text-2xl font-bold">FlowDeck</div>
+      <div className="app-brand">
+        <span>F</span>
+        <div>
+          FlowDeck<small>WORK STUDIO</small>
+        </div>
+      </div>
 
-      <nav className="mt-10 space-y-2">
-        {navigationItems.map((item) => {
-          if (!item.path) {
-            return (
-              <span
-                key={item.label}
-                className="block cursor-not-allowed rounded-(--radius-md) px-4 py-3 text-white/40"
-              >
-                {item.label}
-              </span>
-            );
-          }
-
-          return (
-            <NavLink
-              key={item.label}
-              to={item.path}
-              end={item.path === "/dashboard"}
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                `block rounded-(--radius-md) px-4 py-3 transition ${
-                  isActive
-                    ? "bg-white/10 font-semibold text-white"
-                    : "text-white/70 hover:bg-white/5 hover:text-white"
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          );
-        })}
+      <div className="sidebar-label">Workspace</div>
+      <nav className="app-nav">
+        {items.map(([label, path, icon]) => (
+          <NavLink
+            key={path}
+            to={path}
+            onClick={close}
+            className={({ isActive }) => (isActive ? "active" : "")}
+          >
+            <i>{icon}</i>
+            <span>{label}</span>
+          </NavLink>
+        ))}
       </nav>
 
-      <div className="mt-auto border-t border-white/15 pt-5 text-sm text-white/70">
-        Acme Workspace
+      <div className="sidebar-insight">
+        <span>WEEKLY MOMENTUM</span>
+        <div>
+          <b>72%</b>
+          <small>+8%</small>
+        </div>
+        <i>
+          <em style={{ width: "72%" }} />
+        </i>
+        <p>Your team is moving faster than last week.</p>
+      </div>
+
+      <div className="workspace-switcher" ref={menuRef}>
+        {isWorkspaceMenuOpen && (
+          <div className="workspace-popover">
+            <div className="workspace-popover-header">
+              <b>Switch workspace</b>
+              <span>{organizations.length} available</span>
+            </div>
+            {organizations.length > 4 && (
+              <input
+                autoFocus
+                value={workspaceSearch}
+                onChange={(event) => setWorkspaceSearch(event.target.value)}
+                placeholder="Search workspaces..."
+                aria-label="Search workspaces"
+              />
+            )}
+            <div className="workspace-list">
+              {filteredWorkspaces.map((workspace) => {
+                const active =
+                  workspace.organization.id ===
+                  currentOrganization?.organization.id;
+                return (
+                  <button
+                    type="button"
+                    key={workspace.organization.id}
+                    onClick={() => switchWorkspace(workspace.organization.id)}
+                    className={active ? "active" : ""}
+                  >
+                    <span>{workspace.organization.name.slice(0, 1).toUpperCase()}</span>
+                    <div>
+                      <b>{workspace.organization.name}</b>
+                      <small>{roleLabel(workspace.role)}</small>
+                    </div>
+                    {active && <i aria-label="Active workspace">✓</i>}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="workspace-menu-actions">
+              <button type="button" onClick={() => go("/setup-workspace?new=1")}>
+                <span>+</span> Create workspace
+              </button>
+              <button type="button" onClick={() => go("/members")}>
+                <span>✉</span> View invitations
+              </button>
+              <button type="button" onClick={() => go("/settings")}>
+                <span>⚙</span> Workspace settings
+              </button>
+              <button type="button" className="sign-out" onClick={signOut}>
+                <span>↗</span> Sign out
+              </button>
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="sidebar-workspace"
+          onClick={() => setIsWorkspaceMenuOpen((open) => !open)}
+          aria-expanded={isWorkspaceMenuOpen}
+          aria-label="Open workspace switcher"
+        >
+          <span>
+            {currentOrganization?.organization.name?.slice(0, 1).toUpperCase() ?? "W"}
+          </span>
+          <div>
+            <b>{currentOrganization?.organization.name ?? "Workspace"}</b>
+            <small>{roleLabel(currentOrganization?.role)}</small>
+          </div>
+          <i aria-hidden="true">•••</i>
+        </button>
       </div>
     </>
   );
 }
 
-function Sidebar({ isMobileOpen, onClose }: SidebarProps) {
+export default function Sidebar({
+  isMobileOpen,
+  onClose,
+}: {
+  isMobileOpen: boolean;
+  onClose: () => void;
+}) {
   return (
     <>
-      <aside className="hidden w-64 shrink-0 flex-col bg-(--color-primary) p-6 text-white lg:flex">
-        <SidebarContent />
+      <aside className="app-sidebar desktop-sidebar">
+        <Content />
       </aside>
-
       {isMobileOpen && (
         <>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close navigation"
-            className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+            className="sidebar-overlay"
           />
-
-          <aside className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-(--color-primary) p-6 text-white lg:hidden">
-            <button
-              type="button"
-              onClick={onClose}
-              className="absolute top-5 right-5 text-2xl text-white/70"
-            >
+          <aside className="app-sidebar mobile-sidebar">
+            <button type="button" onClick={onClose} className="sidebar-close">
               ×
             </button>
-
-            <SidebarContent onNavigate={onClose} />
+            <Content close={onClose} />
           </aside>
         </>
       )}
     </>
   );
 }
-
-export default Sidebar;

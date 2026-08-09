@@ -7,7 +7,87 @@ import {
 import {
   acceptInvitation,
   createInvitation,
+  previewInvitation,
+  listInvitations,
+  resendInvitation,
+  revokeInvitation,
 } from "./invitation.service.js";
+
+export async function listInvitationsController(request: Request, response: Response) {
+  try { const invitations = await listInvitations((request as AuthenticatedRequest).user.userId, String(request.params.organizationId)); response.json({ success: true, data: { invitations } }); }
+  catch (error) { const message = error instanceof Error ? error.message : "Unable to list invitations"; response.status(message.includes("permission") ? 403 : 500).json({ success: false, message }); }
+}
+
+export async function revokeInvitationController(request: Request, response: Response) {
+  try { await revokeInvitation((request as AuthenticatedRequest).user.userId, String(request.params.invitationId)); response.json({ success: true, message: "Invitation revoked" }); }
+  catch (error) { const message = error instanceof Error ? error.message : "Unable to revoke invitation"; response.status(message.includes("permission") ? 403 : message.includes("not found") ? 404 : 500).json({ success: false, message }); }
+}
+
+export async function resendInvitationController(request: Request, response: Response) {
+  try { const result = await resendInvitation((request as AuthenticatedRequest).user.userId, String(request.params.invitationId)); response.json({ success: true, data: result }); }
+  catch (error) { const message = error instanceof Error ? error.message : "Unable to resend invitation"; response.status(message.includes("permission") ? 403 : message.includes("not found") ? 404 : 500).json({ success: false, message }); }
+}
+
+export async function previewInvitationController(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const { token } = request.params;
+
+  if (!token || typeof token !== "string") {
+    response.status(400).json({
+      success: false,
+      message: "Invitation token is required",
+      code: "NOT_FOUND",
+    });
+    return;
+  }
+
+  try {
+    const preview = await previewInvitation(token);
+
+    if (!preview.exists) {
+      response.status(404).json({
+        success: false,
+        message: "Invitation not found",
+        code: "NOT_FOUND",
+      });
+      return;
+    }
+
+    if (preview.accepted) {
+      response.status(409).json({
+        success: false,
+        message: "Invitation has already been accepted",
+        code: "ALREADY_ACCEPTED",
+      });
+      return;
+    }
+
+    if (preview.expired) {
+      response.status(410).json({
+        success: false,
+        message: "Invitation has expired",
+        code: "EXPIRED",
+      });
+      return;
+    }
+
+    response.status(200).json({
+      success: true,
+      data: preview,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to load invitation";
+
+    response.status(500).json({
+      success: false,
+      message,
+      code: "UNKNOWN",
+    });
+  }
+}
 
 export async function createInvitationController(
   request: Request,
@@ -35,7 +115,9 @@ export async function createInvitationController(
 
     response.status(201).json({
       success: true,
-      message: "Invitation created successfully",
+      message: invitation.emailSent
+        ? "Invitation created and emailed successfully"
+        : "Invitation created, but the email could not be sent",
       data: {
         invitation,
       },

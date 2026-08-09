@@ -1,11 +1,68 @@
+import {
+  useState,
+  type FormEvent,
+} from "react";
+
+import { apiRequest } from "../../lib/api";
+import { useAuth } from "../../context/useAuth";
+
 type CreateTeamModalProps = {
   onClose: () => void;
+  onCreated?: () => void;
 };
 
-function CreateTeamModal({ onClose }: CreateTeamModalProps) {
+function CreateTeamModal({
+  onClose,
+  onCreated,
+}: CreateTeamModalProps) {
+  const { currentOrganization } = useAuth();
+
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
+
+  const organizationId =
+    currentOrganization?.organization.id;
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (!organizationId) {
+      setError("Workspace not found");
+      return;
+    }
+
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      await apiRequest("/teams", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          organizationId,
+        }),
+      });
+
+      onCreated?.();
+      onClose();
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create team"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <section className="w-full max-w-md rounded-(--radius-xl) bg-white p-6 shadow-(--shadow-lg)">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <section className="w-full max-w-lg rounded-(--radius-xl) bg-white p-6 shadow-(--shadow-lg)">
         <header className="flex items-center justify-between">
           <h2 className="font-(--font-heading) text-2xl font-bold">
             Create team
@@ -25,7 +82,10 @@ function CreateTeamModal({ onClose }: CreateTeamModalProps) {
           Create a team for organizing members and projects.
         </p>
 
-        <form className="mt-6 space-y-5">
+        <form
+          onSubmit={handleSubmit}
+          className="mt-6 space-y-5"
+        >
           <div>
             <label
               htmlFor="teamName"
@@ -38,39 +98,39 @@ function CreateTeamModal({ onClose }: CreateTeamModalProps) {
               id="teamName"
               type="text"
               placeholder="Design Team"
+              value={name}
+              onChange={(event) =>
+                setName(event.target.value)
+              }
+              required
               className="w-full rounded-(--radius-md) border border-(--color-border) px-4 py-3 outline-none focus:border-(--color-accent)"
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="teamDescription"
-              className="mb-2 block text-sm font-semibold"
-            >
-              Description
-            </label>
-
-            <textarea
-              id="teamDescription"
-              placeholder="What does this team work on?"
-              className="min-h-24 w-full resize-none rounded-(--radius-md) border border-(--color-border) px-4 py-3 outline-none focus:border-(--color-accent)"
-            />
-          </div>
+          {error && (
+            <p className="text-sm text-red-600">
+              {error}
+            </p>
+          )}
 
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-(--radius-md) border border-(--color-border) px-4 py-2 font-semibold"
+              disabled={isSubmitting}
+              className="rounded-(--radius-md) border border-(--color-border) px-4 py-2 font-semibold disabled:opacity-60"
             >
               Cancel
             </button>
 
             <button
               type="submit"
-              className="rounded-(--radius-md) bg-(--color-primary) px-5 py-2 font-semibold text-white"
+              disabled={isSubmitting}
+              className="rounded-(--radius-md) bg-(--color-primary) px-5 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Create team
+              {isSubmitting
+                ? "Creating..."
+                : "Create team"}
             </button>
           </div>
         </form>

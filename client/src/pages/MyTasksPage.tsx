@@ -1,33 +1,201 @@
-import AppLayout from "../components/layout/AppLayout";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-const tasks = [
-  {
-    key: "FD-24",
-    title: "Design dashboard layout",
-    project: "Website Redesign",
-    status: "To Do",
-    priority: "High",
-    dueDate: "Aug 12",
-  },
-  {
-    key: "FD-25",
-    title: "Build reusable UI components",
-    project: "Website Redesign",
-    status: "In Progress",
-    priority: "High",
-    dueDate: "Aug 14",
-  },
-  {
-    key: "FD-31",
-    title: "Prepare API documentation",
-    project: "Mobile Application",
-    status: "Review",
-    priority: "Medium",
-    dueDate: "Aug 18",
-  },
-];
+import { Link } from "react-router";
+
+import AppLayout from "../components/layout/AppLayout";
+import { apiRequest } from "../lib/api";
+import { useAuth } from "../context/useAuth";
+
+type Team = {
+  id: string;
+  name: string;
+  organizationId: string;
+};
+
+type Project = {
+  id: string;
+  name: string;
+  description: string | null;
+  teamId: string;
+};
+
+type Task = {
+  id: string;
+  title: string;
+  description: string | null;
+  position: number;
+  projectId: string;
+  columnId: string;
+  assigneeId: string | null;
+
+  column: {
+    id: string;
+    name: string;
+  };
+
+  assignee: {
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl: string | null;
+  } | null;
+};
+
+type TaskItem = {
+  task: Task;
+  project: Project;
+};
 
 function MyTasksPage() {
+  const {
+    user,
+    currentOrganization,
+  } = useAuth();
+
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+
+  const [search, setSearch] = useState("");
+  const [selectedStatus, setSelectedStatus] =
+    useState("all");
+
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [error, setError] = useState("");
+
+  const organizationId =
+    currentOrganization?.organization.id;
+
+  const loadTasks = useCallback(async () => {
+    if (!organizationId || !user) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const teamsResponse = await apiRequest(
+        `/teams/organization/${organizationId}`
+      );
+
+      const teams =
+        teamsResponse.data.teams as Team[];
+
+      if (teams.length === 0) {
+        setTasks([]);
+        return;
+      }
+
+      const projectResponses = await Promise.all(
+        teams.map((team) =>
+          apiRequest(
+            `/projects/teams/${team.id}`
+          )
+        )
+      );
+
+      const projects =
+        projectResponses.flatMap(
+          (response) =>
+            response.data.projects as Project[]
+        );
+
+      if (projects.length === 0) {
+        setTasks([]);
+        return;
+      }
+
+      const taskResponses = await Promise.all(
+        projects.map((project) =>
+          apiRequest(
+            `/tasks/projects/${project.id}`
+          )
+        )
+      );
+
+      const taskItems: TaskItem[] = [];
+
+      taskResponses.forEach(
+        (response, index) => {
+          const project = projects[index];
+
+          const projectTasks =
+            response.data.tasks as Task[];
+
+          projectTasks
+            .filter(
+              (task) =>
+                task.assigneeId === user.id
+            )
+            .forEach((task) => {
+              taskItems.push({
+                task,
+                project,
+              });
+            });
+        }
+      );
+
+      setTasks(taskItems);
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load your tasks"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [organizationId, user]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadTasks();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadTasks]);
+
+  const statuses = useMemo(() => {
+    return Array.from(
+      new Set(
+        tasks.map(
+          (item) => item.task.column.name
+        )
+      )
+    );
+  }, [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    const searchValue =
+      search.trim().toLowerCase();
+
+    return tasks.filter((item) => {
+      const matchesSearch =
+        item.task.title
+          .toLowerCase()
+          .includes(searchValue) ||
+        item.project.name
+          .toLowerCase()
+          .includes(searchValue);
+
+      const matchesStatus =
+        selectedStatus === "all" ||
+        item.task.column.name ===
+          selectedStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [tasks, search, selectedStatus]);
+
   return (
     <AppLayout>
       <div className="p-6 lg:p-8">
@@ -41,70 +209,111 @@ function MyTasksPage() {
           </p>
         </header>
 
+        {error && (
+          <div className="mt-6 rounded-(--radius-md) border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
         <div className="mt-8 flex flex-col gap-4 sm:flex-row">
           <input
             type="search"
             placeholder="Search your tasks..."
+            value={search}
+            onChange={(event) =>
+              setSearch(event.target.value)
+            }
             className="w-full rounded-(--radius-md) border border-(--color-border) bg-white px-4 py-3 outline-none focus:border-(--color-accent) sm:max-w-sm"
           />
 
-          <select className="rounded-(--radius-md) border border-(--color-border) bg-white px-4 py-3 outline-none">
-            <option>All statuses</option>
-            <option>To Do</option>
-            <option>In Progress</option>
-            <option>Review</option>
-            <option>Done</option>
-          </select>
+          <select
+            value={selectedStatus}
+            onChange={(event) =>
+              setSelectedStatus(
+                event.target.value
+              )
+            }
+            className="rounded-(--radius-md) border border-(--color-border) bg-white px-4 py-3 outline-none"
+          >
+            <option value="all">
+              All statuses
+            </option>
 
-          <select className="rounded-(--radius-md) border border-(--color-border) bg-white px-4 py-3 outline-none">
-            <option>All priorities</option>
-            <option>Low</option>
-            <option>Medium</option>
-            <option>High</option>
-            <option>Urgent</option>
+            {statuses.map((status) => (
+              <option
+                key={status}
+                value={status}
+              >
+                {status}
+              </option>
+            ))}
           </select>
         </div>
 
-        <section className="mt-6 overflow-hidden rounded-(--radius-lg) border border-(--color-border) bg-white shadow-(--shadow-sm)">
-          <div className="hidden grid-cols-[2.5fr_1.5fr_1fr_1fr_1fr] gap-4 border-b border-(--color-border) px-6 py-4 text-sm font-semibold text-(--color-text-secondary) md:grid">
-            <span>Task</span>
-            <span>Project</span>
-            <span>Status</span>
-            <span>Priority</span>
-            <span>Due date</span>
+        {isLoading ? (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <p className="text-(--color-text-secondary)">
+              Loading your tasks...
+            </p>
           </div>
+        ) : filteredTasks.length === 0 ? (
+          <section className="mt-6 rounded-(--radius-lg) border border-dashed border-(--color-border) bg-white px-6 py-14 text-center">
+            <h2 className="font-(--font-heading) text-xl font-bold">
+              No tasks found
+            </h2>
 
-          {tasks.map((task) => (
-            <article
-              key={task.key}
-              className="grid gap-3 border-b border-(--color-border) p-5 last:border-b-0 md:grid-cols-[2.5fr_1.5fr_1fr_1fr_1fr] md:items-center md:px-6"
-            >
-              <div>
-                <p className="text-xs font-medium text-(--color-text-secondary)">
-                  {task.key}
-                </p>
+            <p className="mt-2 text-sm text-(--color-text-secondary)">
+              {tasks.length === 0
+                ? "No tasks are currently assigned to you."
+                : "No tasks match your current search or status filter."}
+            </p>
+          </section>
+        ) : (
+          <section className="mt-6 overflow-hidden rounded-(--radius-lg) border border-(--color-border) bg-white shadow-(--shadow-sm)">
+            <div className="hidden grid-cols-[2.5fr_1.5fr_1fr_auto] gap-4 border-b border-(--color-border) px-6 py-4 text-sm font-semibold text-(--color-text-secondary) md:grid">
+              <span>Task</span>
+              <span>Project</span>
+              <span>Status</span>
+              <span>Open</span>
+            </div>
 
-                <h2 className="mt-1 font-semibold">{task.title}</h2>
-              </div>
+            {filteredTasks.map(
+              ({ task, project }) => (
+                <article
+                  key={task.id}
+                  className="grid gap-3 border-b border-(--color-border) p-5 last:border-b-0 md:grid-cols-[2.5fr_1.5fr_1fr_auto] md:items-center md:px-6"
+                >
+                  <div>
+                    <h2 className="font-semibold">
+                      {task.title}
+                    </h2>
 
-              <span className="text-sm text-(--color-text-secondary)">
-                {task.project}
-              </span>
+                    {task.description && (
+                      <p className="mt-1 line-clamp-1 text-sm text-(--color-text-secondary)">
+                        {task.description}
+                      </p>
+                    )}
+                  </div>
 
-              <span className="w-fit rounded-full bg-(--color-background) px-3 py-1 text-xs font-semibold">
-                {task.status}
-              </span>
+                  <span className="text-sm text-(--color-text-secondary)">
+                    {project.name}
+                  </span>
 
-              <span className="w-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
-                {task.priority}
-              </span>
+                  <span className="w-fit rounded-full bg-(--color-background) px-3 py-1 text-xs font-semibold">
+                    {task.column.name}
+                  </span>
 
-              <span className="text-sm text-(--color-text-secondary)">
-                {task.dueDate}
-              </span>
-            </article>
-          ))}
-        </section>
+                  <Link
+                    to={`/projects/${project.id}/board`}
+                    className="w-fit text-sm font-semibold text-(--color-accent)"
+                  >
+                    Open board
+                  </Link>
+                </article>
+              )
+            )}
+          </section>
+        )}
       </div>
     </AppLayout>
   );

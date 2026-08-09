@@ -5,6 +5,9 @@ import {
   createTeamController,
   getTeamByIdController,
   getTeamsController,
+  deleteTeamController,
+  removeTeamMemberController,
+  updateTeamController,
 } from "./team.controller.js";
 
 const teamRouter = Router();
@@ -24,5 +27,8 @@ teamRouter.post(
   requireAuth,
   addTeamMemberController
 );
+teamRouter.patch("/:teamId", requireAuth, updateTeamController);
+teamRouter.delete("/:teamId", requireAuth, deleteTeamController);
+teamRouter.delete("/:teamId/members/:userId", requireAuth, removeTeamMemberController);
 
 export default teamRouter;
