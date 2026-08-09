@@ -4,6 +4,22 @@ import { apiRequest } from "../lib/api";
 import { useAuth } from "../context/useAuth";
 import { getSafeNextPath } from "../lib/navigation";
 
+const DEMO_PASSWORD = "FlowDeckDemo2026!";
+const demoAccounts = {
+  admin: {
+    email: "demo.admin@flowdeck.app",
+    label: "Admin view",
+    description: "Explore teams, projects, members, and workspace controls.",
+  },
+  member: {
+    email: "demo.member@flowdeck.app",
+    label: "Member view",
+    description: "See assigned work and the focused contributor experience.",
+  },
+} as const;
+
+type DemoRole = keyof typeof demoAccounts;
+
 function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -17,12 +33,9 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState<DemoRole | null>(null);
 
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
+  async function signIn(loginEmail: string, loginPassword: string) {
     setError("");
     setIsLoading(true);
 
@@ -30,8 +43,8 @@ function LoginPage() {
       const response = await apiRequest("/auth/login", {
         method: "POST",
         body: JSON.stringify({
-          email,
-          password,
+          email: loginEmail,
+          password: loginPassword,
         }),
       });
 
@@ -41,7 +54,6 @@ function LoginPage() {
       );
 
       await refreshUser();
-
       navigate(nextPath, { replace: true });
     } catch (error) {
       setError(
@@ -52,6 +64,23 @@ function LoginPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    await signIn(email, password);
+  }
+
+  async function handleDemoLogin(role: DemoRole) {
+    const account = demoAccounts[role];
+    setEmail(account.email);
+    setPassword(DEMO_PASSWORD);
+    setDemoLoading(role);
+    await signIn(account.email, DEMO_PASSWORD);
+    setDemoLoading(null);
   }
 
   return (
@@ -157,6 +186,54 @@ function LoginPage() {
                 : "Sign in to FlowDeck"}
             </button>
           </form>
+
+          <div className="my-7 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[.16em] text-(--color-text-muted)">
+            <span className="h-px flex-1 bg-(--color-border)" />
+            Explore the live demo
+            <span className="h-px flex-1 bg-(--color-border)" />
+          </div>
+
+          <section className="overflow-hidden rounded-(--radius-lg) border border-[#d8cec6] bg-white shadow-(--shadow-sm)">
+            <div className="flex items-start justify-between gap-4 bg-[#f7f1ed] px-5 py-4">
+              <div>
+                <p className="font-(--font-heading) text-base font-bold text-(--color-primary)">
+                  Pixora Demo Workspace
+                </p>
+                <p className="mt-1 text-xs leading-5 text-(--color-text-secondary)">
+                  Preloaded with teams, active projects, tasks, comments, and notifications.
+                </p>
+              </div>
+              <span className="rounded-full bg-[#dcebe5] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#3f7564]">
+                Live
+              </span>
+            </div>
+
+            <div className="grid gap-2 p-3 sm:grid-cols-2">
+              {(Object.entries(demoAccounts) as [DemoRole, (typeof demoAccounts)[DemoRole]][]).map(
+                ([role, account]) => (
+                  <button
+                    key={role}
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => void handleDemoLogin(role)}
+                    className="group rounded-(--radius-md) border border-(--color-border) p-3 text-left transition hover:-translate-y-0.5 hover:border-(--color-accent) hover:shadow-(--shadow-sm) disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="flex items-center justify-between gap-2 text-sm font-bold text-(--color-primary)">
+                      {demoLoading === role ? "Opening demo..." : account.label}
+                      <span className="transition group-hover:translate-x-1">→</span>
+                    </span>
+                    <span className="mt-1.5 block text-[10px] leading-4 text-(--color-text-secondary)">
+                      {account.description}
+                    </span>
+                  </button>
+                )
+              )}
+            </div>
+
+            <p className="border-t border-(--color-border) px-5 py-3 text-[10px] text-(--color-text-muted)">
+              Demo access is read-only and contains no personal information.
+            </p>
+          </section>
 
           <p className="mt-6 text-center text-sm text-(--color-text-secondary)">
             Don&apos;t have an account?{" "}

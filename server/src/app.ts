@@ -12,6 +12,7 @@ import commentRouter from "./modules/comments/comment.routes.js";
 import activityRouter from "./modules/activities/activity.routes.js";
 import dashboardRouter from "./modules/dashboard/dashboard.routes.js";
 import notificationRouter from "./modules/notifications/notification.routes.js";
+import { protectPublicDemoAccounts } from "./middleware/demo-readonly.middleware.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -22,6 +23,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use("/api", protectPublicDemoAccounts);
 
 app.get("/api/database-health", async (_request, response) => {
   try {
