@@ -7,13 +7,25 @@ type TokenPayload = {
 };
 
 const readOnlyMethods = new Set(["GET", "HEAD", "OPTIONS"]);
+const publicAuthPaths = new Set([
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/verify-email",
+]);
 
 export function protectPublicDemoAccounts(
   request: Request,
   response: Response,
   next: NextFunction
 ): void {
-  if (readOnlyMethods.has(request.method)) {
+  const requestPath = request.originalUrl.split("?")[0];
+
+  if (
+    readOnlyMethods.has(request.method) ||
+    publicAuthPaths.has(requestPath)
+  ) {
     next();
     return;
   }
