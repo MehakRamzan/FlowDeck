@@ -96,18 +96,6 @@ function Content({ close }: { close?: () => void }) {
         ))}
       </nav>
 
-      <div className="sidebar-insight">
-        <span>WEEKLY MOMENTUM</span>
-        <div>
-          <b>72%</b>
-          <small>+8%</small>
-        </div>
-        <i>
-          <em style={{ width: "72%" }} />
-        </i>
-        <p>Your team is moving faster than last week.</p>
-      </div>
-
       <div className="workspace-switcher" ref={menuRef}>
         {isWorkspaceMenuOpen && (
           <div className="workspace-popover">
