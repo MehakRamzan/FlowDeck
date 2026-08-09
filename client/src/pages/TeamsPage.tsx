@@ -46,6 +46,8 @@ function TeamsPage() {
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [teamNameDraft, setTeamNameDraft] = useState("");
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [memberToAdd, setMemberToAdd] = useState("");
   const [projectCounts, setProjectCounts] = useState<
@@ -127,15 +129,22 @@ function TeamsPage() {
   }, [organizationId, canManage]);
 
   async function openTeam(teamId: string) {
-    try { const response = await apiRequest(`/teams/${teamId}`); setSelectedTeam(response.data.team); }
+    try { const response = await apiRequest(`/teams/${teamId}`); const team = response.data.team as Team; setSelectedTeam(team); setTeamNameDraft(team.name); setIsRenaming(false); }
     catch (error) { setError(error instanceof Error ? error.message : "Unable to load team"); }
+  }
+
+  function closeTeamDrawer() {
+    setSelectedTeam(null);
+    setIsRenaming(false);
+    setTeamNameDraft("");
+    setMemberToAdd("");
   }
 
   async function renameTeam() {
     if (!selectedTeam) return;
-    const name = window.prompt("Team name", selectedTeam.name);
+    const name = teamNameDraft.trim();
     if (!name) return;
-    try { await apiRequest(`/teams/${selectedTeam.id}`, { method: "PATCH", body: JSON.stringify({ name }) }); await loadTeams(); await openTeam(selectedTeam.id); }
+    try { await apiRequest(`/teams/${selectedTeam.id}`, { method: "PATCH", body: JSON.stringify({ name }) }); await loadTeams(); await openTeam(selectedTeam.id); setIsRenaming(false); }
     catch (error) { setError(error instanceof Error ? error.message : "Unable to rename team"); }
   }
 
@@ -167,6 +176,20 @@ useEffect(() => {
   };
 }, [loadTeams]);
 
+useEffect(() => {
+  if (!selectedTeam) return;
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  function closeOnEscape(event: KeyboardEvent) {
+    if (event.key === "Escape") closeTeamDrawer();
+  }
+  document.addEventListener("keydown", closeOnEscape);
+  return () => {
+    document.body.style.overflow = previousOverflow;
+    document.removeEventListener("keydown", closeOnEscape);
+  };
+}, [selectedTeam]);
+
   return (
     <AppLayout>
       <div className="p-6 lg:p-8">
@@ -181,7 +204,7 @@ useEffect(() => {
             </p>
           </div>
 
-          <button
+          {canManage && <button
             type="button"
             onClick={() =>
               setIsCreateTeamOpen(true)
@@ -189,7 +212,7 @@ useEffect(() => {
             className="rounded-(--radius-md) bg-(--color-primary) px-4 py-3 text-sm font-semibold text-white"
           >
             + Create Team
-          </button>
+          </button>}
         </div>
 
         {error && (
@@ -219,7 +242,7 @@ useEffect(() => {
             {teams.map((team) => (
               <article
                 key={team.id}
-                className="rounded-(--radius-lg) border border-(--color-border) bg-white p-6 shadow-(--shadow-sm)"
+                className="rounded-(--radius-lg) border border-(--color-border) bg-white p-6 shadow-(--shadow-sm) transition duration-200 hover:-translate-y-1 hover:border-[#d8cec6] hover:shadow-(--shadow-md)"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex h-12 w-12 items-center justify-center rounded-(--radius-md) bg-(--color-highlight) font-semibold text-(--color-primary)">
@@ -229,9 +252,10 @@ useEffect(() => {
                   <button
                     type="button"
                     onClick={() => void openTeam(team.id)}
-                    className="text-xl text-(--color-text-secondary)"
+                    aria-label={`Manage ${team.name}`}
+                    className="grid h-9 w-9 place-items-center rounded-(--radius-md) text-xl text-(--color-text-secondary) transition hover:bg-(--color-background) hover:text-(--color-primary)"
                   >
-                    •••
+                    ⋯
                   </button>
                 </div>
 
@@ -277,7 +301,114 @@ useEffect(() => {
           </div>
         )}
 
-        {selectedTeam && <section className="mt-8 rounded-(--radius-lg) border border-(--color-border) bg-white p-6 shadow-(--shadow-sm)"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-(--font-heading) text-xl font-bold">{selectedTeam.name}</h2><p className="text-sm text-(--color-text-secondary)">Team details and members</p></div><button type="button" onClick={() => setSelectedTeam(null)} className="text-sm font-semibold">Close</button></div>{canManage && <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void renameTeam()} className="rounded-(--radius-md) border border-(--color-border) px-4 py-2 font-semibold">Rename</button><button type="button" onClick={() => void deleteSelectedTeam()} className="rounded-(--radius-md) border border-red-300 px-4 py-2 font-semibold text-red-600">Delete</button></div>}<div className="mt-6 space-y-3">{selectedTeam.members.map((member) => <div key={member.userId} className="flex items-center justify-between rounded-(--radius-md) border border-(--color-border) p-3"><div><p className="font-semibold">{member.user?.name ?? member.userId}</p><p className="text-sm text-(--color-text-secondary)">{member.user?.email}</p></div>{canManage && <button type="button" onClick={() => void removeMember(member.userId)} className="text-sm font-semibold text-red-600">Remove</button>}</div>)}</div>{canManage && <div className="mt-5 flex gap-3"><select value={memberToAdd} onChange={(event) => setMemberToAdd(event.target.value)} className="min-w-0 flex-1 rounded-(--radius-md) border border-(--color-border) px-3"><option value="">Add workspace member...</option>{workspaceMembers.filter((member) => !selectedTeam.members.some((teamMember) => teamMember.userId === member.userId)).map((member) => <option key={member.userId} value={member.userId}>{member.user.name}</option>)}</select><button type="button" onClick={() => void addMember()} className="rounded-(--radius-md) bg-(--color-primary) px-4 py-2 font-semibold text-white">Add</button></div>}</section>}
+        {selectedTeam && (
+          <>
+            <button
+              type="button"
+              aria-label="Close team management"
+              onClick={closeTeamDrawer}
+              className="fixed inset-0 z-40 bg-[#071c25]/45 backdrop-blur-[2px]"
+            />
+            <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col bg-[#fbfaf8] shadow-[-24px_0_70px_rgba(7,28,37,0.22)]">
+              <header className="relative overflow-hidden bg-(--color-primary) px-6 py-7 text-white sm:px-8">
+                <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full border border-white/10 bg-white/5" />
+                <button
+                  type="button"
+                  onClick={closeTeamDrawer}
+                  aria-label="Close team management"
+                  title="Close"
+                  className="absolute right-5 top-5 z-20 grid h-10 w-10 cursor-pointer place-items-center rounded-full border border-white/10 bg-white/10 text-xl transition hover:rotate-90 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  ×
+                </button>
+                <div className="relative flex items-center gap-4 pr-12">
+                  <span className="grid h-14 w-14 flex-none place-items-center rounded-2xl bg-(--color-highlight) font-(--font-heading) text-lg font-bold text-(--color-primary)">
+                    {getInitials(selectedTeam.name)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[.18em] text-white/50">Team workspace</p>
+                    <h2 className="mt-1 truncate font-(--font-heading) text-2xl font-bold">{selectedTeam.name}</h2>
+                    <p className="mt-1 text-sm text-white/60">{currentOrganization?.organization.name}</p>
+                  </div>
+                </div>
+              </header>
+
+              <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-(--radius-md) border border-(--color-border) bg-white p-4">
+                    <strong className="font-(--font-heading) text-2xl">{selectedTeam.members.length}</strong>
+                    <p className="mt-1 text-xs text-(--color-text-secondary)">Team members</p>
+                  </div>
+                  <div className="rounded-(--radius-md) border border-(--color-border) bg-white p-4">
+                    <strong className="font-(--font-heading) text-2xl">{projectCounts[selectedTeam.id] ?? 0}</strong>
+                    <p className="mt-1 text-xs text-(--color-text-secondary)">Active projects</p>
+                  </div>
+                </div>
+
+                {canManage && (
+                  <section className="mt-6 rounded-(--radius-lg) border border-(--color-border) bg-white p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div><h3 className="font-semibold">Team settings</h3><p className="mt-1 text-xs text-(--color-text-secondary)">Update this team’s identity or remove it.</p></div>
+                      {!isRenaming && (
+                        <button type="button" onClick={() => setIsRenaming(true)} className="rounded-(--radius-md) border border-(--color-border) px-3 py-2 text-sm font-semibold hover:bg-(--color-background)">
+                          Rename
+                        </button>
+                      )}
+                    </div>
+                    {isRenaming && (
+                      <div className="mt-4 flex gap-2">
+                        <input autoFocus value={teamNameDraft} onChange={(event) => setTeamNameDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameTeam(); }} className="min-w-0 flex-1 rounded-(--radius-md) border border-(--color-border) px-3 py-2 outline-none focus:border-(--color-accent)" />
+                        <button type="button" onClick={() => void renameTeam()} className="rounded-(--radius-md) bg-(--color-primary) px-4 py-2 text-sm font-semibold text-white">Save</button>
+                        <button type="button" onClick={() => { setIsRenaming(false); setTeamNameDraft(selectedTeam.name); }} className="rounded-(--radius-md) px-3 py-2 text-sm font-semibold">Cancel</button>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                <section className="mt-7">
+                  <div className="flex items-end justify-between">
+                    <div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-(--color-accent)">People</p><h3 className="mt-1 font-(--font-heading) text-xl font-bold">Team members</h3></div>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-(--color-text-secondary)">{selectedTeam.members.length} total</span>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {selectedTeam.members.map((member) => {
+                      const name = member.user?.name ?? "Team member";
+                      return (
+                        <div key={member.userId} className="group flex items-center gap-3 rounded-(--radius-md) border border-(--color-border) bg-white p-3 transition hover:border-[#d9cec5] hover:shadow-(--shadow-sm)">
+                          <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-[#f1d2c5] text-xs font-bold text-(--color-primary)">{getInitials(name)}</span>
+                          <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{name}</p><p className="mt-0.5 truncate text-xs text-(--color-text-secondary)">{member.user?.email}</p></div>
+                          {canManage && <button type="button" onClick={() => void removeMember(member.userId)} className="rounded-lg px-3 py-2 text-xs font-semibold text-red-600 opacity-70 transition hover:bg-red-50 hover:opacity-100">Remove</button>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {canManage && (
+                  <section className="mt-7 rounded-(--radius-lg) border border-dashed border-[#d7ccc4] bg-white/60 p-5">
+                    <h3 className="font-semibold">Add a workspace member</h3>
+                    <p className="mt-1 text-xs text-(--color-text-secondary)">Give an existing workspace member access to this team.</p>
+                    <div className="mt-4 flex gap-2">
+                      <select value={memberToAdd} onChange={(event) => setMemberToAdd(event.target.value)} className="min-w-0 flex-1 rounded-(--radius-md) border border-(--color-border) bg-white px-3 py-2 text-sm outline-none focus:border-(--color-accent)">
+                        <option value="">Select workspace member…</option>
+                        {workspaceMembers.filter((member) => !selectedTeam.members.some((teamMember) => teamMember.userId === member.userId)).map((member) => <option key={member.userId} value={member.userId}>{member.user.name}</option>)}
+                      </select>
+                      <button type="button" disabled={!memberToAdd} onClick={() => void addMember()} className="rounded-(--radius-md) bg-(--color-primary) px-5 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">Add</button>
+                    </div>
+                  </section>
+                )}
+              </div>
+
+              {canManage && (
+                <footer className="border-t border-(--color-border) bg-white px-6 py-4 sm:px-8">
+                  <button type="button" onClick={() => void deleteSelectedTeam()} className="text-sm font-semibold text-red-600 hover:text-red-700">
+                    Delete this team
+                  </button>
+                </footer>
+              )}
+            </aside>
+          </>
+        )}
 
         {isCreateTeamOpen && (
           <CreateTeamModal

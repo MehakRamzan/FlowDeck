@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useNavigate } from "react-router";
 
 import AppLayout from "../components/layout/AppLayout";
 import InviteMemberModal from "../components/ui/InviteMemberModal";
@@ -50,6 +51,7 @@ function formatRole(role: Member["role"]) {
 
 function MembersPage() {
   const { currentOrganization } = useAuth();
+  const navigate = useNavigate();
 
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -64,6 +66,7 @@ function MembersPage() {
     useState(true);
 
   const [error, setError] = useState("");
+  const [activeMemberMenuId, setActiveMemberMenuId] = useState<string | null>(null);
 
   const organizationId =
     currentOrganization?.organization.id;
@@ -102,12 +105,14 @@ function MembersPage() {
 
   async function changeRole(member: Member, role: "ADMIN" | "MEMBER") {
     if (!organizationId) return;
+    setActiveMemberMenuId(null);
     try { await apiRequest(`/organizations/${organizationId}/members/${member.userId}`, { method: "PATCH", body: JSON.stringify({ role }) }); await loadMembers(); }
     catch (error) { setError(error instanceof Error ? error.message : "Unable to change role"); }
   }
 
   async function removeMember(member: Member) {
     if (!organizationId || !window.confirm(`Remove ${member.user.name} from this workspace?`)) return;
+    setActiveMemberMenuId(null);
     try { await apiRequest(`/organizations/${organizationId}/members/${member.userId}`, { method: "DELETE" }); await loadMembers(); }
     catch (error) { setError(error instanceof Error ? error.message : "Unable to remove member"); }
   }
@@ -116,13 +121,6 @@ function MembersPage() {
     if (action === "revoke" && !window.confirm(`Revoke the invitation for ${invitation.email}?`)) return;
     try { await apiRequest(`/invitations/${invitation.id}${action === "resend" ? "/resend" : ""}`, { method: action === "resend" ? "POST" : "DELETE" }); await loadMembers(); }
     catch (error) { setError(error instanceof Error ? error.message : `Unable to ${action} invitation`); }
-  }
-
-  async function manageMember(member: Member) {
-    if (!canManage || member.role === "OWNER") return;
-    const action = window.prompt("Enter admin, member, or remove", member.role.toLowerCase());
-    if (action === "admin" || action === "member") await changeRole(member, action.toUpperCase() as "ADMIN" | "MEMBER");
-    if (action === "remove") await removeMember(member);
   }
 
   useEffect(() => {
@@ -134,6 +132,23 @@ function MembersPage() {
       window.clearTimeout(timeoutId);
     };
   }, [loadMembers]);
+
+  useEffect(() => {
+    function closeMemberMenu(event: MouseEvent) {
+      if (!(event.target as HTMLElement).closest("[data-member-menu]")) {
+        setActiveMemberMenuId(null);
+      }
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setActiveMemberMenuId(null);
+    }
+    document.addEventListener("mousedown", closeMemberMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeMemberMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   const filteredMembers = useMemo(() => {
     const searchValue =
@@ -242,7 +257,7 @@ function MembersPage() {
             </p>
           </section>
         ) : (
-          <section className="mt-6 overflow-hidden rounded-(--radius-lg) border border-(--color-border) bg-white shadow-(--shadow-sm)">
+          <section className="mt-6 overflow-visible rounded-(--radius-lg) border border-(--color-border) bg-white shadow-(--shadow-sm)">
             <div className="hidden grid-cols-[2fr_2fr_1fr_auto] gap-4 border-b border-(--color-border) px-6 py-4 text-sm font-semibold text-(--color-text-secondary) md:grid">
               <span>Name</span>
               <span>Email</span>
@@ -275,14 +290,75 @@ function MembersPage() {
                   {formatRole(member.role)}
                 </span>
 
-                <button
-                  type="button"
-                  onClick={() => void manageMember(member)}
-                  disabled={!canManage || member.role === "OWNER"}
-                  className="w-fit text-xl text-(--color-text-secondary)"
-                >
-                  •••
-                </button>
+                <div className="relative w-fit" data-member-menu>
+                  <button
+                    type="button"
+                    onClick={() => setActiveMemberMenuId((current) => current === member.id ? null : member.id)}
+                    aria-label={`Actions for ${member.user.name}`}
+                    aria-expanded={activeMemberMenuId === member.id}
+                    className="grid h-9 w-9 place-items-center rounded-(--radius-md) text-xl text-(--color-text-secondary) transition hover:bg-(--color-background) hover:text-(--color-primary)"
+                  >
+                    ⋯
+                  </button>
+
+                  {activeMemberMenuId === member.id && (
+                    <div className="absolute right-0 top-11 z-30 w-56 rounded-(--radius-md) border border-(--color-border) bg-white p-2 shadow-(--shadow-lg)">
+                      {!canManage ? (
+                        <p className="px-3 py-2 text-xs leading-5 text-(--color-text-secondary)">
+                          Only workspace owners and admins can manage members.
+                        </p>
+                      ) : member.role === "OWNER" ? (
+                        <>
+                          <div className="px-3 py-2">
+                            <b className="text-sm">Workspace owner</b>
+                            <p className="mt-1 text-xs leading-5 text-(--color-text-secondary)">
+                              Transfer ownership before changing or removing this member.
+                            </p>
+                          </div>
+                          {currentOrganization?.role === "OWNER" && (
+                            <button
+                              type="button"
+                              onClick={() => { setActiveMemberMenuId(null); navigate("/settings"); }}
+                              className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-(--color-background)"
+                            >
+                              Manage ownership
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="px-3 pb-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-(--color-text-secondary)">
+                            Change role
+                          </p>
+                          <button
+                            type="button"
+                            disabled={member.role === "ADMIN"}
+                            onClick={() => void changeRole(member, "ADMIN")}
+                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-(--color-background) disabled:cursor-default disabled:font-semibold"
+                          >
+                            Admin {member.role === "ADMIN" && <span>✓</span>}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={member.role === "MEMBER"}
+                            onClick={() => void changeRole(member, "MEMBER")}
+                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-(--color-background) disabled:cursor-default disabled:font-semibold"
+                          >
+                            Member {member.role === "MEMBER" && <span>✓</span>}
+                          </button>
+                          <div className="my-1 border-t border-(--color-border)" />
+                          <button
+                            type="button"
+                            onClick={() => void removeMember(member)}
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+                          >
+                            Remove from workspace
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </article>
             ))}
           </section>
